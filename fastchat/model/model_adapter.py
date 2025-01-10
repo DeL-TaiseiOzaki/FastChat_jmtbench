@@ -102,7 +102,6 @@ class BaseModelAdapter:
             tokenizer = AutoTokenizer.from_pretrained(
                 model_path,
                 use_fast=self.use_fast_tokenizer,
-                revision=revision,
                 trust_remote_code=True,
             )
         except TypeError:
@@ -1573,14 +1572,29 @@ class Llama2Adapter(BaseModelAdapter):
 
 class Llama3Adapter(BaseModelAdapter):
     """The model adapter for Llama-3 (e.g., meta-llama/Meta-Llama-3-8B-Instruct)"""
+    use_fast_tokenizer = False  
 
     def match(self, model_path: str):
         return "llama-3" in model_path.lower()
 
     def load_model(self, model_path: str, from_pretrained_kwargs: dict):
-        model, tokenizer = super().load_model(model_path, from_pretrained_kwargs)
-        model.config.eos_token_id = tokenizer.eos_token_id
-        model.config.pad_token_id = tokenizer.pad_token_id
+        # revision を取り出す
+        revision = from_pretrained_kwargs.get("revision", "main")
+
+        # fast tokenizer を使わない & LlamaTokenizer でロード
+        tokenizer = LlamaTokenizer.from_pretrained(
+            model_path,
+            use_fast=False,
+            trust_remote_code=True,
+            revision=revision,
+        )
+
+        model = LlamaForCausalLM.from_pretrained(
+            model_path,
+            trust_remote_code=True,
+            low_cpu_mem_usage=True,
+            **from_pretrained_kwargs,
+        )
         return model, tokenizer
 
     def get_default_conv_template(self, model_path: str) -> Conversation:
@@ -2447,6 +2461,7 @@ class RekaAdapter(BaseModelAdapter):
 
 # Note: the registration order matters.
 # The one registered earlier has a higher matching priority.
+register_model_adapter(Llama3Adapter)
 register_model_adapter(PeftModelAdapter)
 register_model_adapter(StableVicunaAdapter)
 register_model_adapter(VicunaAdapter)
@@ -2544,7 +2559,7 @@ register_model_adapter(YandexGPTAdapter)
 register_model_adapter(CllmAdapter)
 register_model_adapter(RekaAdapter)
 register_model_adapter(SmaugChatAdapter)
-register_model_adapter(Llama3Adapter)
+
 
 # After all adapters, try the default base adapter.
 register_model_adapter(BaseModelAdapter)
